@@ -26,7 +26,7 @@ OUTPUT_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'oec_data.js
 # blowing up a fouling-resistance calc). These get automatically screened;
 # fields like uc_vap (a constant design reference) are left alone.
 SCREEN_FIELDS = ['u_vap', 'u_preheater', 'mtd_vap', 'mtd_preheater',
-                  'rd_vap', 'rd_preheater', 'gross_power_mw']
+                  'rd_vap', 'rd_preheater']
 # Modified z-score threshold (Iglewicz & Hoaglin). 3.5 is the usual
 # textbook default; we use a slightly looser 5.0 so normal day-to-day
 # swings aren't flagged, only clear one-off spikes like the ones you saw.
