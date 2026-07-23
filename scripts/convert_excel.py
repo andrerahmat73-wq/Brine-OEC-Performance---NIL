@@ -33,6 +33,9 @@ SCREEN_FIELDS = ['u_vap', 'u_preheater', 'mtd_vap', 'mtd_preheater',
 MZ_THRESHOLD = 5.0
 
 
+RD_MAX = 0.005   # m²·K/W — Rd above this is treated as a bad reading, not real fouling
+U_MAX = 1500     # W/m²·K — physical ceiling for operating U and the clean-U (Uc) reference
+
 def screen_outliers(rows, field, thresh=MZ_THRESHOLD):
     """Null out statistical outliers in-place using the median/MAD
     modified z-score. A single wild spike (like a flow sensor dropping to
@@ -53,6 +56,17 @@ def screen_outliers(rows, field, thresh=MZ_THRESHOLD):
                 r[field] = None
                 removed += 1
     return removed
+
+def apply_hard_cap(rows, field, max_value):
+    """Null out any value above a fixed physical ceiling, regardless of
+    what the statistical screen above catches."""
+    capped = 0
+    for r in rows:
+        v = r[field]
+        if isinstance(v, (int, float)) and v > max_value:
+            r[field] = None
+            capped += 1
+    return capped
 
 
 def find_col(headers, name, occurrence='first'):
@@ -149,10 +163,15 @@ def main():
         screened_total = 0
         for field in SCREEN_FIELDS:
             screened_total += screen_outliers(rows, field)
+        capped_total = 0
+        for field, limit in [('rd_vap', RD_MAX), ('rd_preheater', RD_MAX),
+                              ('u_vap', U_MAX), ('u_preheater', U_MAX),
+                              ('uc_vap', U_MAX), ('uc_preheater', U_MAX)]:
+            capped_total += apply_hard_cap(rows, field, limit)
         result[key] = rows
         print(f'{sn}: extracted {len(rows)} rows '
               f'({rows[0]["date"] if rows else "?"} to {rows[-1]["date"] if rows else "?"})'
-              f' — {screened_total} outlier value(s) screened out')
+              f' — {screened_total} outlier(s), {capped_total} over-limit value(s) screened out')
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, 'w') as f:
