@@ -32,7 +32,6 @@ SCREEN_FIELDS = ['u_vap', 'u_preheater', 'mtd_vap', 'mtd_preheater',
 # swings aren't flagged, only clear one-off spikes like the ones you saw.
 MZ_THRESHOLD = 5.0
 
-
 RD_MAX = 0.005   # m²·K/W — Rd above this is treated as a bad reading, not real fouling
 U_MAX = 1500     # W/m²·K — physical ceiling for operating U and the clean-U (Uc) reference
 
