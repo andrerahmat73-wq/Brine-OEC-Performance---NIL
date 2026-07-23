@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OEC Brine Heat Exchanger Performance</title>
+<script src="vendor/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg: #12161c;
+    --panel: #1a1f27;
+    --panel-2: #212832;
+    --border: #2b3340;
+    --text: #e7ebf0;
+    --muted: #8b96a5;
+    --amber: #f2a93b;
+    --amber-dim: #f2a93b55;
+    --teal: #45d0c0;
+    --teal-dim: #45d0c055;
+    --red: #e8604c;
+    --green: #58c47a;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  header{
+    padding:22px 28px 18px; border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;
+  }
+  header .title-block{display:flex; flex-direction:column; gap:4px;}
+  header h1{font-size:19px; margin:0; font-weight:650; letter-spacing:.2px;}
+  header .subtitle{font-size:12.5px; color:var(--muted);}
+  header .meta{font-family:var(--mono); font-size:11.5px; color:var(--muted); text-align:right;}
+  #dataStatus{color:var(--teal);}
+  #dataStatus.error{color:var(--red);}
+
+  .toolbar{
+    display:flex; gap:10px; align-items:center; padding:14px 28px; flex-wrap:wrap;
+    border-bottom:1px solid var(--border); background:var(--panel);
+  }
+  .tabs{display:flex; gap:6px;}
+  .tab{
+    padding:7px 16px; border-radius:7px; background:var(--panel-2); color:var(--muted);
+    border:1px solid var(--border); cursor:pointer; font-size:13px; font-weight:600;
+    transition:all .12s ease;
+  }
+  .tab:hover{color:var(--text);}
+  .tab.active{background:var(--amber); color:#1a1206; border-color:var(--amber);}
+
+  .toolbar .spacer{flex:1;}
+  .range-select{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted);}
+  select{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; padding:6px 10px; font-size:12.5px; font-family:var(--sans);
+  }
+
+  main{padding:22px 28px 40px; max-width:1400px; margin:0 auto;}
+
+  .kpi-row{display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:14px; margin-bottom:22px;}
+  .kpi{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 18px;
+  }
+  .kpi .label{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;}
+  .kpi .value{font-family:var(--mono); font-size:26px; font-weight:600; line-height:1;}
+  .kpi .sub{font-size:12px; color:var(--muted); margin-top:6px;}
+  .kpi .sub.warn{color:var(--red);}
+  .kpi .sub.ok{color:var(--green);}
+
+  .panels{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  @media (max-width:900px){ .panels{grid-template-columns:1fr;} }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px 20px 10px;
+    grid-column: span 1;
+  }
+  .panel.full{grid-column:1 / -1;}
+  .panel h3{margin:0 0 2px; font-size:14px; font-weight:650;}
+  .panel .desc{font-size:12px; color:var(--muted); margin-bottom:10px;}
+  .chart-wrap{position:relative; height:260px;}
+  .chart-wrap.tall{height:300px;}
+
+  footer{padding:20px 28px 40px; color:var(--muted); font-size:11.5px; text-align:center;}
+  footer a{color:var(--teal);}
+
+  .legend-note{font-size:11px; color:var(--muted); margin-top:4px;}
+  .swatch{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-block">
+    <h1>OEC Brine Heat Exchanger Performance</h1>
+    <div class="subtitle">Vaporizer &amp; preheater fouling monitoring — Namora-I-Langit</div>
+  </div>
+  <div class="meta">
+    <div id="dataStatus">loading data…</div>
+    <div id="dataRange"></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="tabs" id="tabs"></div>
+  <div class="spacer"></div>
+  <div class="range-select">
+    <span>Range</span>
+    <select id="rangeSelect">
+      <option value="90">Last 90 days</option>
+      <option value="180">Last 180 days</option>
+      <option value="365" selected>Last 365 days</option>
+      <option value="all">All data</option>
+    </select>
+  </div>
+</div>
+
+<main>
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="panels">
+    <div class="panel">
+      <h3>Vaporizer: U vs. MTD (design comparison)</h3>
+      <div class="desc">Each point is one day's operating U at that day's MTD. Dashed line is the constant clean-tube reference (Uc) from design data — the same chart style as your Excel "Vap OEC" sheets.</div>
+      <div class="chart-wrap"><canvas id="chartScatterVap"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Preheater: U vs. MTD (design comparison)</h3>
+      <div class="desc">Same comparison for the preheater train — matches the Excel "PHE OEC" sheets.</div>
+      <div class="chart-wrap"><canvas id="chartScatterPhe"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Vaporizer U — operating vs. clean</h3>
+      <div class="desc">Overall heat transfer coefficient (W/m²·K). Gap between operating (U) and clean (Uc) reflects fouling buildup.</div>
+      <div class="chart-wrap"><canvas id="chartUVap"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Preheater U — operating vs. clean</h3>
+      <div class="desc">Same comparison for the preheater train.</div>
+      <div class="chart-wrap"><canvas id="chartUPhe"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Fouling resistance (Rd) — Vaporizer</h3>
+      <div class="desc">Rising Rd = increasing scale/fouling deposit — a leading indicator for cleaning schedules.</div>
+      <div class="chart-wrap"><canvas id="chartRdVap"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Fouling resistance (Rd) — Preheater</h3>
+      <div class="desc"></div>
+      <div class="chart-wrap"><canvas id="chartRdPhe"></canvas></div>
+    </div>
+    <div class="panel full">
+      <h3>Generator gross power output (MW)</h3>
+      <div class="desc">Daily gross power, for context against efficiency trends.</div>
+      <div class="chart-wrap tall"><canvas id="chartPower"></canvas></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Data sourced from <code>data/oec_data.json</code>, generated from the plant historian export.
+  To refresh, replace the Excel export and re-run the conversion script, then commit — see the README in this repo.
+</footer>
+
+<script>
+const OEC_KEYS = ['oec1','oec2','oec3','oec4'];
+const OEC_LABELS = {oec1:'OEC 1', oec2:'OEC 2', oec3:'OEC 3', oec4:'OEC 4'};
+let currentOec = 'oec1';
+let allData = null;
+let charts = {};
+
+const COLORS = {
+  amber: '#f2a93b',
+  teal: '#45d0c0',
+  red: '#e8604c',
+  green: '#58c47a',
+  muted: '#8b96a5'
+};
+
+function scatterChart(canvasId, points, cleanValue, xLabel, yLabel){
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const xs = points.map(p => p.x).filter(v => v !== null && v !== undefined && !isNaN(v));
+  const minX = xs.length ? Math.min(...xs) : 0;
+  const maxX = xs.length ? Math.max(...xs) : 1;
+  const datasets = [
+    {
+      type:'scatter', label:'Daily operating point',
+      data: points, backgroundColor: COLORS.amber + 'cc', borderColor: COLORS.amber,
+      pointRadius:3, pointHoverRadius:5
+    }
+  ];
+  if(cleanValue !== null && !isNaN(cleanValue)){
+    datasets.push({
+      type:'line', label:'Clean reference (Uc)',
+      data: [{x:minX, y:cleanValue}, {x:maxX, y:cleanValue}],
+      borderColor: COLORS.teal, borderDash:[6,4], borderWidth:2,
+      pointRadius:0, fill:false
+    });
+  }
+  return new Chart(ctx, {
+    type:'scatter',
+    data:{ datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ labels:{ color:'#e7ebf0', boxWidth:10, font:{size:11} } },
+        tooltip:{ backgroundColor:'#1a1f27', borderColor:'#2b3340', borderWidth:1, titleColor:'#e7ebf0', bodyColor:'#e7ebf0' }
+      },
+      scales:{
+        x:{ type:'linear', ticks:{ color:'#8b96a5', font:{size:10} }, grid:{ color:'#232b36' },
+            title:{ display:true, text:xLabel||'', color:'#8b96a5', font:{size:11} } },
+        y:{ ticks:{ color:'#8b96a5', font:{size:10} }, grid:{ color:'#232b36' },
+            title:{ display:true, text:yLabel||'', color:'#8b96a5', font:{size:11} } }
+      }
+    }
+  });
+}
+
+async function loadData(){
+  if(typeof Chart === 'undefined'){
+    document.getElementById('dataStatus').textContent = 'Chart.js failed to load (check vendor/chart.umd.min.js)';
+    document.getElementById('dataStatus').classList.add('error');
+    return;
+  }
+  try{
+    const res = await fetch('data/oec_data.json?_=' + Date.now());
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    allData = await res.json();
+    document.getElementById('dataStatus').textContent = 'data loaded';
+    const allDates = OEC_KEYS.flatMap(k => (allData[k]||[]).map(r => r.date)).sort();
+    if(allDates.length){
+      document.getElementById('dataRange').textContent = allDates[0] + ' → ' + allDates[allDates.length-1];
+    }
+    buildTabs();
+    render();
+  }catch(err){
+    document.getElementById('dataStatus').textContent = 'failed to load data/oec_data.json';
+    document.getElementById('dataStatus').classList.add('error');
+    console.error(err);
+  }
+}
+
+function buildTabs(){
+  const wrap = document.getElementById('tabs');
+  wrap.innerHTML = '';
+  OEC_KEYS.forEach(k => {
+    const btn = document.createElement('div');
+    btn.className = 'tab' + (k === currentOec ? ' active' : '');
+    btn.textContent = OEC_LABELS[k];
+    btn.onclick = () => { currentOec = k; buildTabs(); render(); };
+    wrap.appendChild(btn);
+  });
+}
+
+function filterByRange(rows){
+  const val = document.getElementById('rangeSelect').value;
+  if(val === 'all') return rows;
+  const days = parseInt(val,10);
+  const cutoff = new Date(rows[rows.length-1].date);
+  cutoff.setDate(cutoff.getDate() - days);
+  return rows.filter(r => new Date(r.date) >= cutoff);
+}
+
+function latestValid(rows, field){
+  for(let i = rows.length-1; i >= 0; i--){
+    if(rows[i][field] !== null && rows[i][field] !== undefined && !isNaN(rows[i][field])) return rows[i][field];
+  }
+  return null;
+}
+
+function fmt(v, digits=1){
+  if(v === null || v === undefined || isNaN(v)) return '—';
+  return Number(v).toLocaleString(undefined, {minimumFractionDigits:digits, maximumFractionDigits:digits});
+}
+
+function renderKpis(rows){
+  const uVap = latestValid(rows,'u_vap');
+  const ucVap = latestValid(rows,'uc_vap');
+  const rdVap = latestValid(rows,'rd_vap');
+  const power = latestValid(rows,'gross_power_mw');
+  const foulPct = (uVap!==null && ucVap) ? (100*(1 - uVap/ucVap)) : null;
+
+  const kpis = [
+    {label:'Latest Vaporizer U', value: fmt(uVap,0), sub:'W/m²·K'},
+    {label:'Clean Reference (Uc)', value: fmt(ucVap,0), sub:'W/m²·K'},
+    {label:'Fouling vs. clean', value: foulPct!==null ? fmt(foulPct,1)+'%' : '—',
+      sub: foulPct!==null ? (foulPct > 30 ? 'high — review cleaning' : foulPct > 15 ? 'moderate' : 'low') : '',
+      cls: foulPct!==null ? (foulPct > 30 ? 'warn' : foulPct > 15 ? '' : 'ok') : ''},
+    {label:'Fouling resistance (Rd)', value: fmt(rdVap,5), sub:'m²·K/W'},
+    {label:'Latest gross power', value: fmt(power,2), sub:'MW'},
+  ];
+  const row = document.getElementById('kpiRow');
+  row.innerHTML = '';
+  kpis.forEach(k => {
+    const div = document.createElement('div');
+    div.className = 'kpi';
+    div.innerHTML = `<div class="label">${k.label}</div><div class="value">${k.value}</div><div class="sub ${k.cls||''}">${k.sub||''}</div>`;
+    row.appendChild(div);
+  });
+}
+
+function destroyCharts(){
+  Object.values(charts).forEach(c => c && c.destroy());
+  charts = {};
+}
+
+function lineChart(canvasId, labels, datasets, yLabel){
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{ labels:{ color:'#e7ebf0', boxWidth:10, font:{size:11} } },
+        tooltip:{ backgroundColor:'#1a1f27', borderColor:'#2b3340', borderWidth:1, titleColor:'#e7ebf0', bodyColor:'#e7ebf0' }
+      },
+      scales:{
+        x:{ ticks:{ color:'#8b96a5', maxTicksLimit:10, font:{size:10} }, grid:{ color:'#232b36' } },
+        y:{ ticks:{ color:'#8b96a5', font:{size:10} }, grid:{ color:'#232b36' },
+            title:{ display: !!yLabel, text: yLabel||'', color:'#8b96a5', font:{size:11} } }
+      },
+      elements:{ point:{ radius:0, hoverRadius:4 }, line:{ tension:.15, borderWidth:2 } }
+    }
+  });
+}
+
+function render(){
+  if(!allData) return;
+  const rowsAll = allData[currentOec] || [];
+  const rows = filterByRange(rowsAll);
+  const labels = rows.map(r => r.date);
+
+  renderKpis(rows);
+  destroyCharts();
+
+  const vapPoints = rows
+    .map(r => ({x:r.mtd_vap, y:r.u_vap}))
+    .filter(p => p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined);
+  const phePoints = rows
+    .map(r => ({x:r.mtd_preheater, y:r.u_preheater}))
+    .filter(p => p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined);
+  charts.scatterVap = scatterChart('chartScatterVap', vapPoints, latestValid(rows,'uc_vap'), 'MTD (°C)', 'U (W/m²·K)');
+  charts.scatterPhe = scatterChart('chartScatterPhe', phePoints, latestValid(rows,'uc_preheater'), 'MTD (°C)', 'U (W/m²·K)');
+
+  charts.uVap = lineChart('chartUVap', labels, [
+    {label:'U (operating)', data: rows.map(r=>r.u_vap), borderColor: COLORS.amber, backgroundColor: COLORS.amber},
+    {label:'Uc (clean ref.)', data: rows.map(r=>r.uc_vap), borderColor: COLORS.teal, backgroundColor: COLORS.teal, borderDash:[5,4]}
+  ], 'W/m²·K');
+
+  charts.uPhe = lineChart('chartUPhe', labels, [
+    {label:'U (operating)', data: rows.map(r=>r.u_preheater), borderColor: COLORS.amber, backgroundColor: COLORS.amber},
+    {label:'Uc (clean ref.)', data: rows.map(r=>r.uc_preheater), borderColor: COLORS.teal, backgroundColor: COLORS.teal, borderDash:[5,4]}
+  ], 'W/m²·K');
+
+  charts.rdVap = lineChart('chartRdVap', labels, [
+    {label:'Rd vaporizer', data: rows.map(r=>r.rd_vap), borderColor: COLORS.red, backgroundColor: COLORS.red}
+  ], 'm²·K/W');
+
+  charts.rdPhe = lineChart('chartRdPhe', labels, [
+    {label:'Rd preheater', data: rows.map(r=>r.rd_preheater), borderColor: COLORS.red, backgroundColor: COLORS.red}
+  ], 'm²·K/W');
+
+  charts.power = lineChart('chartPower', labels, [
+    {label:'Gross power', data: rows.map(r=>typeof r.gross_power_mw==='number'?r.gross_power_mw:null), borderColor: COLORS.green, backgroundColor: COLORS.green}
+  ], 'MW');
+}
+
+document.getElementById('rangeSelect').addEventListener('change', render);
+loadData();
+</script>
+
+</body>
+</html>
