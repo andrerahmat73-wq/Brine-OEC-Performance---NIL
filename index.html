@@ -283,14 +283,20 @@ function renderKpis(rows){
   const rdVap = latestValid(rows,'rd_vap');
   const power = latestValid(rows,'gross_power_mw');
   const foulPct = (uVap!==null && ucVap) ? (100*(1 - uVap/ucVap)) : null;
+  const rdClean = latestValid(rows,'rd_vap_clean');
+  const foulPctRd = (rdVap!==null && rdClean) ? (100*(rdVap/rdClean - 1)) : null;
 
   const kpis = [
     {label:'Latest Vaporizer U', value: fmt(uVap,0), sub:'W/m²·K'},
     {label:'Clean Reference (Uc)', value: fmt(ucVap,0), sub:'W/m²·K'},
-    {label:'Fouling vs. clean', value: foulPct!==null ? fmt(foulPct,1)+'%' : '—',
+    {label:'Fouling vs. clean (U value)', value: foulPct!==null ? fmt(foulPct,1)+'%' : '—',
       sub: foulPct!==null ? (foulPct > 30 ? 'high — review cleaning' : foulPct > 15 ? 'moderate' : 'low') : '',
       cls: foulPct!==null ? (foulPct > 30 ? 'warn' : foulPct > 15 ? '' : 'ok') : ''},
     {label:'Fouling resistance (Rd)', value: fmt(rdVap,5), sub:'m²·K/W'},
+    {label:'Clean Reference (Rd)', value: fmt(rdClean,5), sub:'m²·K/W'},
+    {label:'Fouling vs. clean (Rd)', value: foulPctRd!==null ? fmt(foulPctRd,1)+'%' : '—',
+      sub: foulPctRd!==null ? (foulPctRd > 100 ? 'high — review cleaning' : foulPctRd > 40 ? 'moderate' : 'low') : '',
+      cls: foulPctRd!==null ? (foulPctRd > 100 ? 'warn' : foulPctRd > 40 ? '' : 'ok') : ''},
     {label:'Latest gross power', value: fmt(power,2), sub:'MW'},
   ];
   const row = document.getElementById('kpiRow');
@@ -322,7 +328,9 @@ function lineChart(canvasId, labels, datasets, yLabel){
       },
       scales:{
         x:{ ticks:{ color:'#8b96a5', maxTicksLimit:10, font:{size:10} }, grid:{ color:'#232b36' } },
-        y:{ ticks:{ color:'#8b96a5', font:{size:10} }, grid:{ color:'#232b36' },
+        y:{ ticks:{ color:'#8b96a5', font:{size:10},
+              callback:function(value){ return (Math.abs(value) > 0 && Math.abs(value) < 1) ? value.toFixed(5) : value; }
+            }, grid:{ color:'#232b36' },
             title:{ display: !!yLabel, text: yLabel||'', color:'#8b96a5', font:{size:11} } }
       },
       elements:{ point:{ radius:0, hoverRadius:4 }, line:{ tension:.15, borderWidth:2 } }
@@ -359,11 +367,13 @@ function render(){
   ], 'W/m²·K');
 
   charts.rdVap = lineChart('chartRdVap', labels, [
-    {label:'Rd vaporizer', data: rows.map(r=>r.rd_vap), borderColor: COLORS.red, backgroundColor: COLORS.red}
+    {label:'Rd vaporizer', data: rows.map(r=>r.rd_vap), borderColor: COLORS.red, backgroundColor: COLORS.red},
+    {label:'Rd (clean ref.)', data: rows.map(r=>r.rd_vap_clean), borderColor: COLORS.teal, backgroundColor: COLORS.teal, borderDash:[5,4]}
   ], 'm²·K/W');
 
   charts.rdPhe = lineChart('chartRdPhe', labels, [
-    {label:'Rd preheater', data: rows.map(r=>r.rd_preheater), borderColor: COLORS.red, backgroundColor: COLORS.red}
+    {label:'Rd preheater', data: rows.map(r=>r.rd_preheater), borderColor: COLORS.red, backgroundColor: COLORS.red},
+    {label:'Rd (clean ref.)', data: rows.map(r=>r.rd_preheater_clean), borderColor: COLORS.teal, backgroundColor: COLORS.teal, borderDash:[5,4]}
   ], 'm²·K/W');
 
   charts.power = lineChart('chartPower', labels, [
