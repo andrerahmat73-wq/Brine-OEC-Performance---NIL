@@ -16,10 +16,43 @@ import sys
 import json
 import datetime
 import os
+import statistics
 from openpyxl import load_workbook
 
 SHEETS = ['OEC 1', 'OEC 2', 'OEC 3', 'OEC 4']
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'oec_data.json')
+
+# Fields prone to sensor/calc spikes (e.g. a momentary near-zero flow reading
+# blowing up a fouling-resistance calc). These get automatically screened;
+# fields like uc_vap (a constant design reference) are left alone.
+SCREEN_FIELDS = ['u_vap', 'u_preheater', 'mtd_vap', 'mtd_preheater',
+                  'rd_vap', 'rd_preheater', 'gross_power_mw']
+# Modified z-score threshold (Iglewicz & Hoaglin). 3.5 is the usual
+# textbook default; we use a slightly looser 5.0 so normal day-to-day
+# swings aren't flagged, only clear one-off spikes like the ones you saw.
+MZ_THRESHOLD = 5.0
+
+
+def screen_outliers(rows, field, thresh=MZ_THRESHOLD):
+    """Null out statistical outliers in-place using the median/MAD
+    modified z-score. A single wild spike (like a flow sensor dropping to
+    ~0 for one reading) gets replaced with null so the chart shows a gap
+    instead of rescaling the whole axis to fit it; a real gradual trend
+    is far too close to the median to ever trip this."""
+    vals = [r[field] for r in rows if isinstance(r[field], (int, float))]
+    if len(vals) < 10:
+        return 0
+    med = statistics.median(vals)
+    mad = statistics.median([abs(v - med) for v in vals]) or 1e-9
+    removed = 0
+    for r in rows:
+        v = r[field]
+        if isinstance(v, (int, float)):
+            mz = 0.6745 * (v - med) / mad
+            if abs(mz) > thresh:
+                r[field] = None
+                removed += 1
+    return removed
 
 
 def find_col(headers, name, occurrence='first'):
@@ -113,9 +146,13 @@ def main():
             continue
         rows = extract_sheet(wb[sn])
         key = sn.replace('OEC ', 'oec')
+        screened_total = 0
+        for field in SCREEN_FIELDS:
+            screened_total += screen_outliers(rows, field)
         result[key] = rows
         print(f'{sn}: extracted {len(rows)} rows '
-              f'({rows[0]["date"] if rows else "?"} to {rows[-1]["date"] if rows else "?"})')
+              f'({rows[0]["date"] if rows else "?"} to {rows[-1]["date"] if rows else "?"})'
+              f' — {screened_total} outlier value(s) screened out')
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, 'w') as f:
