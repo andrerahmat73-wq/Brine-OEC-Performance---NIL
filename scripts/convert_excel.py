@@ -31,6 +31,14 @@ SCREEN_FIELDS = ['u_vap', 'u_preheater', 'mtd_vap', 'mtd_preheater',
 # textbook default; we use a slightly looser 5.0 so normal day-to-day
 # swings aren't flagged, only clear one-off spikes like the ones you saw.
 MZ_THRESHOLD = 5.0
+# A reading within this fraction of the field's median magnitude is
+# treated as a legitimate near-zero / shutdown-cleaning value and is
+# never screened out, even if it's statistically "far" from the median —
+# that's the whole point (e.g. power or U genuinely dropping to ~0 during
+# a cleaning stop). Extreme values further from zero (in either direction,
+# including large negative sensor-error spikes) are still screened.
+NEAR_ZERO_FRAC = 0.05
+
 
 RD_MAX = 0.005   # m²·K/W — Rd above this is treated as a bad reading, not real fouling
 U_MAX = 1500     # W/m²·K — physical ceiling for operating U and the clean-U (Uc) reference
@@ -46,10 +54,13 @@ def screen_outliers(rows, field, thresh=MZ_THRESHOLD):
         return 0
     med = statistics.median(vals)
     mad = statistics.median([abs(v - med) for v in vals]) or 1e-9
+    near_zero_cutoff = abs(med) * NEAR_ZERO_FRAC
     removed = 0
     for r in rows:
         v = r[field]
         if isinstance(v, (int, float)):
+            if abs(v) <= near_zero_cutoff:
+                continue  # legitimate near-zero / shutdown reading — always keep
             mz = 0.6745 * (v - med) / mad
             if abs(mz) > thresh:
                 r[field] = None
@@ -66,6 +77,27 @@ def apply_hard_cap(rows, field, max_value):
             r[field] = None
             capped += 1
     return capped
+
+
+def derive_clean_references(rows):
+    """Replace the workbook's fixed design Uc with an empirical value: the
+    best (maximum) U actually achieved during the period for this train —
+    a more realistic 'clean' benchmark than the static design formula.
+    Mirror the same idea for Rd: the lowest Rd observed is the closest
+    this train has come to a freshly-cleaned state."""
+    def valid(field):
+        return [r[field] for r in rows if isinstance(r[field], (int, float))]
+
+    uc_vap = max(valid('u_vap'), default=None)
+    uc_phe = max(valid('u_preheater'), default=None)
+    rd_vap_clean = min(valid('rd_vap'), default=None)
+    rd_phe_clean = min(valid('rd_preheater'), default=None)
+
+    for r in rows:
+        r['uc_vap'] = round(uc_vap, 3) if uc_vap is not None else None
+        r['uc_preheater'] = round(uc_phe, 3) if uc_phe is not None else None
+        r['rd_vap_clean'] = round(rd_vap_clean, 6) if rd_vap_clean is not None else None
+        r['rd_preheater_clean'] = round(rd_phe_clean, 6) if rd_phe_clean is not None else None
 
 
 def find_col(headers, name, occurrence='first'):
@@ -164,9 +196,9 @@ def main():
             screened_total += screen_outliers(rows, field)
         capped_total = 0
         for field, limit in [('rd_vap', RD_MAX), ('rd_preheater', RD_MAX),
-                              ('u_vap', U_MAX), ('u_preheater', U_MAX),
-                              ('uc_vap', U_MAX), ('uc_preheater', U_MAX)]:
+                              ('u_vap', U_MAX), ('u_preheater', U_MAX)]:
             capped_total += apply_hard_cap(rows, field, limit)
+        derive_clean_references(rows)
         result[key] = rows
         print(f'{sn}: extracted {len(rows)} rows '
               f'({rows[0]["date"] if rows else "?"} to {rows[-1]["date"] if rows else "?"})'
